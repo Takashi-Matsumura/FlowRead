@@ -10,3 +10,16 @@ export interface LearningProgress {
 export interface UserProgress {
   materials: Record<string, LearningProgress>;
 }
+
+// マークの種類
+// new: 知らなかった（初めて見た単語）
+// forgotten: 忘れてしまった（見たことがあるが思い出せない）
+export type MarkType = 'new' | 'forgotten';
+
+// マークした単語
+export interface MarkedWord {
+  word: string;
+  sentenceIndex: number;
+  chunkIndex: number;
+  type: MarkType;
+}

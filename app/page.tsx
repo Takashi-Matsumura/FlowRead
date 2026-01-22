@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { builtInMaterials } from '@/data/sample-materials/north-wind-and-sun';
+import { FlowReadIcon } from '@/components/ui/FlowReadIcon';
 
 export default function Home() {
   return (
@@ -7,32 +8,22 @@ export default function Home() {
       {/* ヘッダー */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            FlowRead
-          </h1>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            訳すな。意味の流れで、理解せよ。
-          </p>
+          <div className="flex items-center gap-3">
+            <FlowReadIcon size={36} />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                FlowRead
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                訳すな。意味の流れで、理解せよ。
+              </p>
+            </div>
+          </div>
         </div>
       </header>
 
       {/* メインコンテンツ */}
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* コンセプト */}
-        <section className="mb-12">
-          <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-2xl p-8">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              英語を「流れ」で理解する
-            </h2>
-            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-              FlowReadは、英語を翻訳するのではなく、
-              <span className="font-semibold">意味の流れ</span>
-              として理解する力を育てます。
-              左から右へ、文の順番通りに、意味を追いかけていきましょう。
-            </p>
-          </div>
-        </section>
-
         {/* 教材一覧 */}
         <section>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -81,8 +72,30 @@ export default function Home() {
 
       {/* フッター */}
       <footer className="mt-auto border-t border-gray-200 dark:border-gray-700">
-        <div className="max-w-4xl mx-auto px-4 py-6 text-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          {/* 折りたたみ式のコンセプト説明 */}
+          <details className="group mb-4">
+            <summary className="flex items-center justify-center gap-2 cursor-pointer text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+              <span>FlowReadとは？</span>
+              <svg
+                className="w-4 h-4 transition-transform group-open:rotate-180"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+              <p>
+                FlowReadは、英語を翻訳するのではなく、
+                <span className="font-medium text-gray-700 dark:text-gray-300">意味の流れ</span>
+                として理解する力を育てます。
+                左から右へ、文の順番通りに、意味を追いかけていきましょう。
+              </p>
+            </div>
+          </details>
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
             Don&apos;t translate. Understand the flow.
           </p>
         </div>

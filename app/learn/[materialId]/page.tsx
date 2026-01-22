@@ -3,18 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Material } from '@/lib/types';
+import { Material, MarkedWord, MarkType } from '@/lib/types';
 import { builtInMaterials } from '@/data/sample-materials/north-wind-and-sun';
 import { FlowDisplay } from '@/components/learning/FlowDisplay';
 import { AISupport } from '@/components/learning/AISupport';
 import { WordCard } from '@/components/learning/WordCard';
 import { useSettings } from '@/lib/hooks/useSettings';
-
-interface MarkedWord {
-  word: string;
-  sentenceIndex: number;
-  chunkIndex: number;
-}
 
 export default function LearnPage() {
   const params = useParams();
@@ -53,10 +47,10 @@ export default function LearnPage() {
     setCurrentChunkIndex(chunkIndex);
   };
 
-  const handleMarkWord = (word: MarkedWord) => {
+  const handleMarkWord = (word: string, sentenceIndex: number, chunkIndex: number, type: MarkType) => {
     setMarkedWords((prev) => {
-      if (prev.some((w) => w.word === word.word)) return prev;
-      return [...prev, word];
+      if (prev.some((w) => w.word === word)) return prev;
+      return [...prev, { word, sentenceIndex, chunkIndex, type }];
     });
   };
 

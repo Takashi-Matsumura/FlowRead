@@ -1,14 +1,8 @@
 'use client';
 
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { Material } from '@/lib/types';
+import { Material, MarkedWord, MarkType } from '@/lib/types';
 import { getChunkColorClasses } from '@/lib/utils/chunk-colors';
-
-interface MarkedWord {
-  word: string;
-  sentenceIndex: number;
-  chunkIndex: number;
-}
 
 interface FlowDisplayProps {
   material: Material;
@@ -16,7 +10,7 @@ interface FlowDisplayProps {
   currentChunkIndex: number;
   onPositionChange: (sentenceIndex: number, chunkIndex: number) => void;
   markedWords: MarkedWord[];
-  onMarkWord: (word: MarkedWord) => void;
+  onMarkWord: (word: string, sentenceIndex: number, chunkIndex: number, type: MarkType) => void;
   onUnmarkWord: (word: string) => void;
 }
 
@@ -50,12 +44,42 @@ export function FlowDisplay({
     }
   }, [currentSentenceIndex, currentChunkIndex]);
 
-  // コンテキストメニューを閉じる
+  // コンテキストメニューを閉じる＆キーボードショートカット
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!contextMenu) return;
+
+      // Escでメニューを閉じる
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        return;
+      }
+
+      // 既にマーク済みの場合はショートカット無効
+      if (markedWords.some(m => m.word === contextMenu.word)) return;
+
+      // 1キーで「知らなかった」としてマーク
+      if (e.key === '1') {
+        e.preventDefault();
+        onMarkWord(contextMenu.word, contextMenu.sIndex, contextMenu.cIndex, 'new');
+        setContextMenu(null);
+      }
+      // 2キーで「忘れてしまった」としてマーク
+      else if (e.key === '2') {
+        e.preventDefault();
+        onMarkWord(contextMenu.word, contextMenu.sIndex, contextMenu.cIndex, 'forgotten');
+        setContextMenu(null);
+      }
+    };
+
     window.addEventListener('click', handleClick);
-    return () => window.removeEventListener('click', handleClick);
-  }, []);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu, markedWords, onMarkWord]);
 
   // 次のチャンク/文へ移動
   const goToNext = useCallback(() => {
@@ -109,10 +133,11 @@ export function FlowDisplay({
     }
   };
 
-  // 単語がマーク済みかチェック
-  const isWordMarked = (word: string) => {
+  // 単語がマーク済みかチェック（種類も返す）
+  const getWordMarkType = (word: string): MarkType | null => {
     const cleanWord = word.replace(/[.,;:!?'"]/g, '').toLowerCase();
-    return markedWords.some(m => m.word === cleanWord);
+    const marked = markedWords.find(m => m.word === cleanWord);
+    return marked?.type ?? null;
   };
 
   const colorClasses = currentChunk ? getChunkColorClasses(currentChunk.guide.role) : '';
@@ -150,12 +175,17 @@ export function FlowDisplay({
                       `}
                     >
                       {words.map((word, wIndex) => {
-                        const isMarked = isWordMarked(word);
+                        const markType = getWordMarkType(word);
+                        const markColorClass = markType === 'new'
+                          ? 'bg-blue-200 dark:bg-blue-700/50 rounded px-0.5'
+                          : markType === 'forgotten'
+                            ? 'bg-amber-200 dark:bg-amber-700/50 rounded px-0.5'
+                            : '';
                         return (
                           <span
                             key={wIndex}
                             onContextMenu={(e) => handleWordContextMenu(e, word, sIndex, cIndex)}
-                            className={isMarked ? 'bg-red-200 dark:bg-red-700/50 rounded px-0.5' : ''}
+                            className={markColorClass}
                           >
                             {word}
                           </span>
@@ -177,37 +207,60 @@ export function FlowDisplay({
       {/* 右クリックコンテキストメニュー */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-40"
+          className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-52"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-1 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-            "{contextMenu.word}"
+          <div className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+            &quot;{contextMenu.word}&quot;
           </div>
           {markedWords.some(m => m.word === contextMenu.word) ? (
             <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 dark:text-red-400"
+              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 dark:text-red-400 flex items-center gap-2"
               onClick={() => {
                 onUnmarkWord(contextMenu.word);
                 setContextMenu(null);
               }}
             >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18"/>
+                <path d="m6 6 12 12"/>
+              </svg>
               マークを解除
             </button>
           ) : (
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-              onClick={() => {
-                onMarkWord({
-                  word: contextMenu.word,
-                  sentenceIndex: contextMenu.sIndex,
-                  chunkIndex: contextMenu.cIndex,
-                });
-                setContextMenu(null);
-              }}
-            >
-              わからない単語としてマーク
-            </button>
+            <>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-300 flex items-center gap-2"
+                onClick={() => {
+                  onMarkWord(contextMenu.word, contextMenu.sIndex, contextMenu.cIndex, 'new');
+                  setContextMenu(null);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 16v-4"/>
+                  <path d="M12 8h.01"/>
+                </svg>
+                <span className="flex-1">知らなかった</span>
+                <kbd className="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 rounded text-gray-500 dark:text-gray-400">1</kbd>
+              </button>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex items-center gap-2"
+                onClick={() => {
+                  onMarkWord(contextMenu.word, contextMenu.sIndex, contextMenu.cIndex, 'forgotten');
+                  setContextMenu(null);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                  <path d="M12 7v5l4 2"/>
+                </svg>
+                <span className="flex-1">忘れてしまった</span>
+                <kbd className="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 rounded text-gray-500 dark:text-gray-400">2</kbd>
+              </button>
+            </>
           )}
         </div>
       )}
@@ -298,7 +351,7 @@ export function FlowDisplay({
 
       {/* キーボードヒント */}
       <p className="mt-4 text-center text-sm text-gray-400 dark:text-gray-500">
-        ← → キーで移動 / 右クリックで単語をマーク
+        ← → キーで移動 / 右クリックで単語をマーク（1: 知らなかった, 2: 忘れた）
       </p>
     </div>
   );
