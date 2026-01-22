@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Material, MarkedWord, MarkType } from '@/lib/types';
@@ -9,6 +9,7 @@ import { FlowDisplay } from '@/components/learning/FlowDisplay';
 import { AISupport } from '@/components/learning/AISupport';
 import { WordCard } from '@/components/learning/WordCard';
 import { useSettings } from '@/lib/hooks/useSettings';
+import { getMarkedWords, saveMarkedWords } from '@/lib/storage/marked-words';
 
 export default function LearnPage() {
   const params = useParams();
@@ -19,19 +20,28 @@ export default function LearnPage() {
   const [material, setMaterial] = useState<Material | null>(null);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-  const [markedWords, setMarkedWords] = useState<MarkedWord[]>([]);
+  const [markedWords, setMarkedWords] = useState<MarkedWord[] | null>(null);
   const [showWordList, setShowWordList] = useState(false);
 
+  // 教材を読み込み、マークした単語を復元
   useEffect(() => {
     const found = builtInMaterials.find((m) => m.id === materialId);
     if (found) {
       setMaterial(found);
+      // localStorageからマークした単語を復元
+      const savedWords = getMarkedWords(materialId);
+      setMarkedWords(savedWords);
     } else {
       router.push('/');
     }
   }, [materialId, router]);
 
-  if (!material || !settingsLoaded) {
+  // マークした単語をlocalStorageに保存する関数
+  const persistMarkedWords = useCallback((words: MarkedWord[]) => {
+    saveMarkedWords(materialId, words);
+  }, [materialId]);
+
+  if (!material || !settingsLoaded || markedWords === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-gray-500">読み込み中...</p>
@@ -49,13 +59,21 @@ export default function LearnPage() {
 
   const handleMarkWord = (word: string, sentenceIndex: number, chunkIndex: number, type: MarkType) => {
     setMarkedWords((prev) => {
+      if (!prev) return prev;
       if (prev.some((w) => w.word === word)) return prev;
-      return [...prev, { word, sentenceIndex, chunkIndex, type }];
+      const newWords = [...prev, { word, sentenceIndex, chunkIndex, type }];
+      persistMarkedWords(newWords);
+      return newWords;
     });
   };
 
   const handleUnmarkWord = (word: string) => {
-    setMarkedWords((prev) => prev.filter((w) => w.word !== word));
+    setMarkedWords((prev) => {
+      if (!prev) return prev;
+      const newWords = prev.filter((w) => w.word !== word);
+      persistMarkedWords(newWords);
+      return newWords;
+    });
   };
 
   // 全体の進捗を計算
