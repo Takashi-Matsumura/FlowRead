@@ -1,14 +1,97 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSettings } from '@/lib/hooks/useSettings';
+import { AIProvider, providerConfigs } from '@/lib/types/settings';
+
+interface ModelInfo {
+  id: string;
+  name?: string;
+}
+
+// モデル名を短縮形で表示
+function getShortModelName(modelId: string): string {
+  // パス形式の場合、ファイル名部分を抽出
+  const parts = modelId.split('/');
+  let name = parts[parts.length - 1];
+
+  // 拡張子を除去
+  name = name.replace(/\.(gguf|bin|safetensors)$/i, '');
+
+  // 長すぎる場合は省略
+  if (name.length > 40) {
+    return name.substring(0, 37) + '...';
+  }
+
+  return name;
+}
 
 export default function SettingsPage() {
   const router = useRouter();
   const { settings, isLoaded, updateAISettings } = useSettings();
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
+
+  // サービス状態とモデル一覧
+  const [serviceStatus, setServiceStatus] = useState<'checking' | 'available' | 'unavailable'>('checking');
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [useManualInput, setUseManualInput] = useState(false);
+
+  // モデル一覧を取得
+  const fetchModels = useCallback(async (endpoint: string) => {
+    setServiceStatus('checking');
+    setAvailableModels([]);
+
+    try {
+      const res = await fetch(`${endpoint}/v1/models`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000), // 3秒タイムアウト
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const models: ModelInfo[] = data.data?.map((m: { id: string; name?: string }) => ({
+          id: m.id,
+          name: m.name || m.id,
+        })) || [];
+
+        setAvailableModels(models);
+        setServiceStatus('available');
+
+        // 現在のモデルが一覧にない場合、最初のモデルを選択
+        if (models.length > 0 && !models.some(m => m.id === settings.ai.model)) {
+          updateAISettings({ model: models[0].id });
+        }
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch {
+      setServiceStatus('unavailable');
+      setAvailableModels([]);
+    }
+  }, [settings.ai.model, updateAISettings]);
+
+  // プロバイダー変更時にモデル一覧を取得
+  const handleProviderChange = (provider: AIProvider) => {
+    const config = providerConfigs[provider];
+    const newEndpoint = config.defaultEndpoint;
+    updateAISettings({
+      provider,
+      endpoint: newEndpoint,
+      model: provider === 'ollama' ? 'llama3.2' : provider === 'lm-studio' ? 'loaded-model' : 'llama.cpp',
+    });
+    setUseManualInput(false);
+    fetchModels(newEndpoint);
+  };
+
+  // 初回読み込み時にモデル一覧を取得
+  useEffect(() => {
+    if (isLoaded && settings.ai.endpoint) {
+      fetchModels(settings.ai.endpoint);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
 
   if (!isLoaded) {
     return (
@@ -96,7 +179,7 @@ export default function SettingsPage() {
               AI サポート設定
             </h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              llama.cpp サーバーを使用したAI学習サポート
+              ローカルLLMを使用したAI学習サポート
             </p>
           </div>
 
@@ -125,75 +208,150 @@ export default function SettingsPage() {
               </button>
             </div>
 
+            {/* プロバイダー選択 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                AIプロバイダー
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(providerConfigs) as AIProvider[]).map((provider) => (
+                  <button
+                    key={provider}
+                    onClick={() => handleProviderChange(provider)}
+                    className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      settings.ai.provider === provider
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 text-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    {providerConfigs[provider].name}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                {serviceStatus === 'checking' && (
+                  <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    接続確認中...
+                  </span>
+                )}
+                {serviceStatus === 'available' && (
+                  <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                    サービス稼働中（{availableModels.length}モデル）
+                  </span>
+                )}
+                {serviceStatus === 'unavailable' && (
+                  <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="m15 9-6 6"/>
+                      <path d="m9 9 6 6"/>
+                    </svg>
+                    サービス未起動
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {providerConfigs[settings.ai.provider || 'llama.cpp'].description}
+              </p>
+            </div>
+
             {/* エンドポイント */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 サーバーエンドポイント
               </label>
-              <input
-                type="text"
-                value={settings.ai.endpoint}
-                onChange={(e) => updateAISettings({ endpoint: e.target.value })}
-                placeholder="http://localhost:8080"
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={settings.ai.endpoint}
+                  onChange={(e) => updateAISettings({ endpoint: e.target.value })}
+                  placeholder={providerConfigs[settings.ai.provider || 'llama.cpp'].defaultEndpoint}
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <button
+                  onClick={() => fetchModels(settings.ai.endpoint)}
+                  disabled={serviceStatus === 'checking'}
+                  title="モデルを再取得します"
+                  className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={serviceStatus === 'checking' ? 'animate-spin' : ''}
+                  >
+                    <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                  </svg>
+                </button>
+              </div>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                llama.cpp serverのURLを入力（例: http://localhost:8080）
+                デフォルト: {providerConfigs[settings.ai.provider || 'llama.cpp'].defaultEndpoint}
               </p>
             </div>
 
-            {/* モデル名 */}
+            {/* モデル選択 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                モデル名（表示用）
-              </label>
-              <input
-                type="text"
-                value={settings.ai.model}
-                onChange={(e) => updateAISettings({ model: e.target.value })}
-                placeholder="llama.cpp"
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Temperature */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Temperature: {settings.ai.temperature}
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={settings.ai.temperature}
-                onChange={(e) => updateAISettings({ temperature: parseFloat(e.target.value) })}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>正確</span>
-                <span>創造的</span>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  モデル
+                </label>
+                {serviceStatus === 'available' && availableModels.length > 0 && (
+                  <button
+                    onClick={() => setUseManualInput(!useManualInput)}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    {useManualInput ? 'リストから選択' : '手動で入力'}
+                  </button>
+                )}
               </div>
-            </div>
 
-            {/* Max Tokens */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                最大トークン数: {settings.ai.maxTokens}
-              </label>
-              <input
-                type="range"
-                min="64"
-                max="512"
-                step="64"
-                value={settings.ai.maxTokens}
-                onChange={(e) => updateAISettings({ maxTokens: parseInt(e.target.value) })}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>短い</span>
-                <span>長い</span>
-              </div>
+              {/* サービス稼働中でモデルがある場合 */}
+              {serviceStatus === 'available' && availableModels.length > 0 && !useManualInput ? (
+                <select
+                  value={settings.ai.model}
+                  onChange={(e) => updateAISettings({ model: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {getShortModelName(model.id)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={settings.ai.model}
+                  onChange={(e) => updateAISettings({ model: e.target.value })}
+                  placeholder="モデル名を入力"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              )}
+
+              {serviceStatus === 'unavailable' && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  サービスが起動していないため、手動でモデル名を入力してください
+                </p>
+              )}
+              {serviceStatus === 'checking' && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  利用可能なモデルを確認中...
+                </p>
+              )}
             </div>
 
             {/* 接続テスト */}
@@ -203,7 +361,7 @@ export default function SettingsPage() {
                 disabled={testStatus === 'testing'}
                 className="w-full px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
               >
-                {testStatus === 'testing' ? '接続テスト中...' : '接続をテスト'}
+                {testStatus === 'testing' ? '接続テスト中...' : '接続テスト'}
               </button>
 
               {testMessage && (
@@ -221,17 +379,37 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* 使い方 */}
+        {/* 使い方 - プロバイダーごとに表示 */}
         <section className="mt-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6">
           <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
-            llama.cpp サーバーの起動方法
+            {providerConfigs[settings.ai.provider || 'llama.cpp'].name} の起動方法
           </h3>
           <div className="text-sm text-blue-800 dark:text-blue-200 space-y-2">
-            <p>1. llama.cpp をビルドしてサーバーモードで起動:</p>
-            <pre className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded overflow-x-auto">
-              ./llama-server -m model.gguf --port 8080
-            </pre>
-            <p>2. 上記のエンドポイントを設定して接続テストを実行</p>
+            {(settings.ai.provider === 'llama.cpp' || !settings.ai.provider) && (
+              <>
+                <p>1. llama.cpp をビルドしてサーバーモードで起動:</p>
+                <pre className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded overflow-x-auto">
+                  ./llama-server -m model.gguf --port 8080
+                </pre>
+              </>
+            )}
+            {settings.ai.provider === 'lm-studio' && (
+              <>
+                <p>1. LM Studio を起動し、モデルをダウンロード</p>
+                <p>2. 左サイドバーの「Local Server」タブを開く</p>
+                <p>3. 「Start Server」をクリック（デフォルトポート: 1234）</p>
+              </>
+            )}
+            {settings.ai.provider === 'ollama' && (
+              <>
+                <p>1. Ollama をインストール後、モデルをダウンロード:</p>
+                <pre className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded overflow-x-auto">
+                  ollama pull llama3.2
+                </pre>
+                <p>2. サーバーは自動起動（または `ollama serve` で起動）</p>
+              </>
+            )}
+            <p className="pt-2">設定後、「接続テスト」で確認してください。</p>
           </div>
         </section>
       </main>

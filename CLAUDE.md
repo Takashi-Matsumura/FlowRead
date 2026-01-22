@@ -10,7 +10,10 @@ FlowRead is an English learning application that helps users understand English 
 - **Language**: TypeScript (strict mode)
 - **UI**: React 19.2.3 + Tailwind CSS v4
 - **Data Storage**: localStorage
-- **AI Integration**: llama.cpp server (OpenAI-compatible API)
+- **AI Integration**: Local LLM servers (OpenAI-compatible API)
+  - llama.cpp server (default, port 8080)
+  - LM Studio (port 1234)
+  - Ollama (port 11434)
 
 ## Directory Structure
 
@@ -27,7 +30,8 @@ flow-read/
 │   │   ├── FlowDisplay.tsx     # Main text display with chunk highlighting
 │   │   ├── AISupport.tsx       # AI assistance panel
 │   │   └── WordCard.tsx        # Marked word card with AI lookup
-│   └── ui/                     # Shared UI components
+│   └── ui/
+│       └── FlowReadIcon.tsx    # App logo icon
 ├── lib/
 │   ├── types/
 │   │   ├── index.ts            # Re-exports
@@ -39,7 +43,8 @@ flow-read/
 │   │   ├── useLlamaAI.ts       # llama.cpp API hook
 │   │   └── useSettings.ts      # Settings management hook
 │   ├── storage/
-│   │   └── settings.ts         # localStorage for settings
+│   │   ├── settings.ts         # localStorage for settings
+│   │   └── marked-words.ts     # localStorage for marked words
 │   └── utils/
 │       └── chunk-colors.ts     # Color utilities for chunk roles
 └── data/
@@ -86,8 +91,12 @@ interface Material {
 1. **Flow Display**: Shows full text with chunk-by-chunk highlighting
 2. **Keyboard Navigation**: Arrow keys to move through chunks
 3. **Chunk Tooltip**: Shows role, question form, and flow hint
-4. **Word Marking**: Right-click to mark unknown words
-5. **AI Support**: llama.cpp integration for explanations
+4. **Word Marking**: Right-click to mark words with two types:
+   - **知らなかった (new)**: First time seeing this word (blue highlight)
+   - **忘れてしまった (forgotten)**: Seen before but forgot (amber highlight)
+   - Keyboard shortcuts: `1` for new, `2` for forgotten
+   - Persisted to localStorage per material
+5. **AI Support**: Local LLM integration for explanations (llama.cpp, LM Studio, Ollama)
 6. **Word Lookup**: AI-powered definitions with English definitions and context
 
 ## Design Principles
@@ -115,9 +124,17 @@ npm run lint     # Run ESLint
 
 ## AI Configuration
 
-The app uses llama.cpp server with OpenAI-compatible API:
-- Default endpoint: `http://localhost:8080`
-- Configure in Settings page (`/settings`)
+The app supports multiple local LLM providers with OpenAI-compatible API:
+
+| Provider   | Default Endpoint           | Description |
+|------------|---------------------------|-------------|
+| llama.cpp  | `http://localhost:8080`   | Default, lightweight |
+| LM Studio  | `http://localhost:1234`   | GUI-based model management |
+| Ollama     | `http://localhost:11434`  | Easy CLI setup |
+
+Configure in Settings page (`/settings`):
+- Select provider and it auto-detects available models
+- Manual endpoint configuration supported
 
 ## Language
 
