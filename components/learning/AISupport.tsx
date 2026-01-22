@@ -5,6 +5,17 @@ import { Chunk, Sentence } from '@/lib/types';
 import { AISettings } from '@/lib/types/settings';
 import { useLlamaAI } from '@/lib/hooks/useLlamaAI';
 
+// モデル名を短縮形で表示
+function getShortModelName(modelId: string): string {
+  const parts = modelId.split('/');
+  let name = parts[parts.length - 1];
+  name = name.replace(/\.(gguf|bin|safetensors)$/i, '');
+  if (name.length > 25) {
+    return name.substring(0, 22) + '...';
+  }
+  return name;
+}
+
 interface AISupportProps {
   sentence: Sentence;
   currentChunk: Chunk;
@@ -56,7 +67,7 @@ export function AISupport({ sentence, currentChunk, aiSettings }: AISupportProps
             AIサポート
           </span>
           <span className="text-xs text-purple-600 dark:text-purple-400">
-            ({aiSettings.model})
+            ({getShortModelName(aiSettings.model)})
           </span>
         </div>
         <button
