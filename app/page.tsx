@@ -1,8 +1,39 @@
+'use client';
+
+import { useState, useReducer } from 'react';
 import Link from 'next/link';
 import { builtInMaterials } from '@/data/sample-materials/north-wind-and-sun';
 import { FlowReadIcon } from '@/components/ui/FlowReadIcon';
+import { AddMaterialModal } from '@/components/AddMaterialModal';
+import { getUserMaterials, deleteUserMaterial } from '@/lib/storage/materials';
+import { Material } from '@/lib/types';
 
 export default function Home() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [, forceUpdate] = useReducer(x => x + 1, 0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // クライアントサイドでのみlocalStorageからユーザー教材を取得
+  const userMaterials: Material[] = typeof window !== 'undefined' ? getUserMaterials() : [];
+
+  const handleMaterialAdded = () => {
+    forceUpdate();
+  };
+
+  const handleDelete = (e: React.MouseEvent, materialId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (confirm('この教材を削除しますか？')) {
+      setDeletingId(materialId);
+      deleteUserMaterial(materialId);
+      forceUpdate();
+      setDeletingId(null);
+    }
+  };
+
+  const allMaterials = [...builtInMaterials, ...userMaterials];
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* ヘッダー */}
@@ -31,17 +62,24 @@ export default function Home() {
           </h2>
 
           <div className="space-y-4">
-            {builtInMaterials.map((material) => (
+            {allMaterials.map((material) => (
               <Link
                 key={material.id}
                 href={`/learn/${material.id}`}
                 className="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                      {material.title}
-                    </h3>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        {material.title}
+                      </h3>
+                      {material.isBuiltIn && (
+                        <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">
+                          組み込み
+                        </span>
+                      )}
+                    </div>
                     {material.description && (
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                         {material.description}
@@ -51,7 +89,19 @@ export default function Home() {
                       {material.sentences.length} 文
                     </p>
                   </div>
-                  <div className="flex-shrink-0 ml-4">
+                  <div className="flex-shrink-0 ml-4 flex items-center gap-2">
+                    {!material.isBuiltIn && (
+                      <button
+                        onClick={(e) => handleDelete(e, material.id)}
+                        disabled={deletingId === material.id}
+                        className="p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                        title="削除"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                       学習する
                     </span>
@@ -60,12 +110,18 @@ export default function Home() {
               </Link>
             ))}
 
-            {/* 教材追加カード（将来用） */}
-            <div className="bg-gray-100 dark:bg-gray-800/50 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 p-6 text-center">
-              <p className="text-gray-500 dark:text-gray-400">
-                自分の教材を追加（準備中）
-              </p>
-            </div>
+            {/* 教材追加ボタン */}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="w-full bg-gray-100 dark:bg-gray-800/50 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 p-6 text-center hover:border-blue-400 dark:hover:border-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all group"
+            >
+              <div className="flex items-center justify-center gap-2 text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>自分の教材を追加</span>
+              </div>
+            </button>
           </div>
         </section>
       </main>
@@ -100,6 +156,13 @@ export default function Home() {
           </p>
         </div>
       </footer>
+
+      {/* 教材追加モーダル */}
+      <AddMaterialModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onAdded={handleMaterialAdded}
+      />
     </div>
   );
 }

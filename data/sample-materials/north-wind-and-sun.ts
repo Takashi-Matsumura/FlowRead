@@ -1,4 +1,6 @@
 import { Material } from '@/lib/types';
+import { littleRedRidingHood } from './little-red-riding-hood';
+import { gettysburgAddress } from './gettysburg-address';
 
 export const northWindAndSun: Material = {
   id: 'builtin-north-wind-and-sun',
@@ -406,4 +408,8 @@ export const northWindAndSun: Material = {
 };
 
 // 組み込み教材の一覧
-export const builtInMaterials: Material[] = [northWindAndSun];
+export const builtInMaterials: Material[] = [
+  northWindAndSun,
+  littleRedRidingHood,
+  gettysburgAddress,
+];

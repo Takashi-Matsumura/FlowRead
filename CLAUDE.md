@@ -30,8 +30,9 @@ flow-read/
 │   │   ├── FlowDisplay.tsx     # Main text display with chunk highlighting
 │   │   ├── AISupport.tsx       # AI assistance panel
 │   │   └── WordCard.tsx        # Marked word card with AI lookup
-│   └── ui/
-│       └── FlowReadIcon.tsx    # App logo icon
+│   ├── ui/
+│   │   └── FlowReadIcon.tsx    # App logo icon
+│   └── AddMaterialModal.tsx    # Modal for adding custom materials
 ├── lib/
 │   ├── types/
 │   │   ├── index.ts            # Re-exports
@@ -44,12 +45,16 @@ flow-read/
 │   │   └── useSettings.ts      # Settings management hook
 │   ├── storage/
 │   │   ├── settings.ts         # localStorage for settings
-│   │   └── marked-words.ts     # localStorage for marked words
+│   │   ├── marked-words.ts     # localStorage for marked words
+│   │   └── materials.ts        # localStorage for user materials
 │   └── utils/
-│       └── chunk-colors.ts     # Color utilities for chunk roles
+│       ├── chunk-colors.ts     # Color utilities for chunk roles
+│       └── parse-text.ts       # Text parsing for material creation
 └── data/
     └── sample-materials/
-        └── north-wind-and-sun.ts  # Built-in sample material
+        ├── north-wind-and-sun.ts      # Aesop's Fables
+        ├── little-red-riding-hood.ts  # Grimm's Fairy Tales
+        └── gettysburg-address.ts      # Lincoln's speech
 ```
 
 ## Core Data Models
@@ -98,6 +103,10 @@ interface Material {
    - Persisted to localStorage per material
 5. **AI Support**: Local LLM integration for explanations (llama.cpp, LM Studio, Ollama)
 6. **Word Lookup**: AI-powered definitions with English definitions and context
+7. **Custom Materials**: Add your own English texts via modal dialog
+   - Auto-splits text into sentences
+   - Saved to localStorage
+   - Deletable from home page
 
 ## Design Principles
 
@@ -135,6 +144,16 @@ The app supports multiple local LLM providers with OpenAI-compatible API:
 Configure in Settings page (`/settings`):
 - Select provider and it auto-detects available models
 - Manual endpoint configuration supported
+
+## Built-in Materials
+
+All materials are public domain:
+
+| Title | Source | Sentences |
+|-------|--------|-----------|
+| 北風と太陽 | Aesop's Fables | 9 |
+| 赤ずきん | Grimm's Fairy Tales | 12 |
+| ゲティスバーグ演説 | Abraham Lincoln (1863) | 16 |
 
 ## Language
 

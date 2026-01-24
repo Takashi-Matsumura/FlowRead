@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Material, MarkedWord, MarkType } from '@/lib/types';
 import { builtInMaterials } from '@/data/sample-materials/north-wind-and-sun';
+import { getUserMaterial } from '@/lib/storage/materials';
 import { FlowDisplay } from '@/components/learning/FlowDisplay';
 import { AISupport } from '@/components/learning/AISupport';
 import { WordCard } from '@/components/learning/WordCard';
@@ -25,7 +26,14 @@ export default function LearnPage() {
 
   // 教材を読み込み、マークした単語を復元
   useEffect(() => {
-    const found = builtInMaterials.find((m) => m.id === materialId);
+    // 組み込み教材から検索
+    let found = builtInMaterials.find((m) => m.id === materialId);
+
+    // ユーザー教材から検索
+    if (!found) {
+      found = getUserMaterial(materialId);
+    }
+
     if (found) {
       setMaterial(found);
       // localStorageからマークした単語を復元
