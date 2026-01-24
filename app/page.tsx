@@ -1,23 +1,83 @@
 'use client';
 
-import { useState, useReducer } from 'react';
+import { useState, useReducer, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { builtInMaterials } from '@/data/sample-materials/north-wind-and-sun';
 import { FlowReadIcon } from '@/components/ui/FlowReadIcon';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
 import { getUserMaterials, deleteUserMaterial } from '@/lib/storage/materials';
-import { Material } from '@/lib/types';
+import { readBackupFile, importBackup, BackupData } from '@/lib/storage/backup';
+import { Material, MarkedWord } from '@/lib/types';
+
+const MARKED_WORDS_PREFIX = 'flowread_marked_words_';
+
+function getMarkedWordsCount(): number {
+  if (typeof window === 'undefined') return 0;
+  let count = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(MARKED_WORDS_PREFIX)) {
+      try {
+        const data = localStorage.getItem(key);
+        if (data) {
+          const words: MarkedWord[] = JSON.parse(data);
+          count += words.length;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return count;
+}
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [, forceUpdate] = useReducer(x => x + 1, 0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // クライアントサイドでのみlocalStorageからユーザー教材を取得
-  const userMaterials: Material[] = typeof window !== 'undefined' ? getUserMaterials() : [];
+  // タブ
+  const [activeTab, setActiveTab] = useState<'materials' | 'review'>('materials');
+
+  // バックアップインポート
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // クライアントサイドでのみlocalStorageからデータを取得（hydration後）
+  const [userMaterials, setUserMaterials] = useState<Material[]>([]);
+  const [markedWordsCount, setMarkedWordsCount] = useState(0);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // クライアントサイドでデータを読み込む
+  useEffect(() => {
+    setUserMaterials(getUserMaterials());
+    setMarkedWordsCount(getMarkedWordsCount());
+    setIsHydrated(true);
+  }, []);
+
+  const refreshData = () => {
+    setUserMaterials(getUserMaterials());
+    setMarkedWordsCount(getMarkedWordsCount());
+    forceUpdate();
+  };
 
   const handleMaterialAdded = () => {
-    forceUpdate();
+    refreshData();
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const data: BackupData = await readBackupFile(file);
+      const result = importBackup(data);
+      setImportMessage({ type: result.success ? 'success' : 'error', text: result.message });
+      if (result.success) {
+        refreshData();
+        setTimeout(() => setImportMessage(null), 3000);
+      }
+    } catch (err) {
+      setImportMessage({ type: 'error', text: err instanceof Error ? err.message : 'インポートに失敗しました' });
+    }
   };
 
   const handleDelete = (e: React.MouseEvent, materialId: string) => {
@@ -27,7 +87,7 @@ export default function Home() {
     if (confirm('この教材を削除しますか？')) {
       setDeletingId(materialId);
       deleteUserMaterial(materialId);
-      forceUpdate();
+      refreshData();
       setDeletingId(null);
     }
   };
@@ -54,13 +114,44 @@ export default function Home() {
       </header>
 
       {/* メインコンテンツ */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* 教材一覧 */}
-        <section>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+      <main className="max-w-4xl mx-auto px-4 py-6">
+        {/* タブ */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+          <button
+            onClick={() => setActiveTab('materials')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'materials'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+            </svg>
             教材を選ぶ
-          </h2>
+          </button>
+          <button
+            onClick={() => setActiveTab('review')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'review'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+            </svg>
+            復習する
+            {markedWordsCount > 0 && (
+              <span className="px-1.5 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full">
+                {markedWordsCount}
+              </span>
+            )}
+          </button>
+        </div>
 
+        {/* 教材タブ */}
+        {activeTab === 'materials' && (
           <div className="space-y-4">
             {allMaterials.map((material) => (
               <Link
@@ -123,7 +214,115 @@ export default function Home() {
               </div>
             </button>
           </div>
-        </section>
+        )}
+
+        {/* 復習タブ */}
+        {activeTab === 'review' && (
+          <div className="space-y-6">
+            {/* 復習カード */}
+            <Link
+              href="/review"
+              className="block bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white hover:from-blue-600 hover:to-blue-700 transition-all hover:shadow-lg"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-xl">単語を復習</h3>
+                  <p className="text-blue-100">
+                    {markedWordsCount > 0
+                      ? `${markedWordsCount} 単語をフラッシュカードで復習`
+                      : 'マークした単語がありません'}
+                  </p>
+                </div>
+                <div className="ml-auto">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m9 18 6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+            </Link>
+
+            {/* バックアップインポート */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                  データをインポート
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  バックアップファイルから単語と教材を復元します
+                </p>
+              </div>
+              <div className="p-6">
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.name.endsWith('.json')) {
+                      await handleImportFile(file);
+                    }
+                  }}
+                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${
+                    isDragging
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-300 dark:border-gray-600'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) await handleImportFile(file);
+                    }}
+                  />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`mx-auto mb-3 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`}>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <p className="text-gray-600 dark:text-gray-400 mb-2">
+                    ここにファイルをドラッグ&ドロップ
+                  </p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                  >
+                    またはファイルを選択
+                  </button>
+                </div>
+
+                {/* インポート結果メッセージ */}
+                {importMessage && (
+                  <div className={`mt-4 p-3 rounded-lg text-sm ${
+                    importMessage.type === 'success'
+                      ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                      : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                  }`}>
+                    {importMessage.text}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* エクスポートへのリンク */}
+            <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+              バックアップのエクスポートは
+              <Link href="/settings" className="text-blue-600 dark:text-blue-400 hover:underline mx-1">
+                設定
+              </Link>
+              から行えます
+            </div>
+          </div>
+        )}
       </main>
 
       {/* フッター */}

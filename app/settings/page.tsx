@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSettings } from '@/lib/hooks/useSettings';
 import { AIProvider, providerConfigs } from '@/lib/types/settings';
+import { exportBackup, readBackupFile, importBackup, BackupData } from '@/lib/storage/backup';
 
 interface ModelInfo {
   id: string;
@@ -37,6 +38,16 @@ export default function SettingsPage() {
   const [serviceStatus, setServiceStatus] = useState<'checking' | 'available' | 'unavailable'>('checking');
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [useManualInput, setUseManualInput] = useState(false);
+
+  // バックアップ関連
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [importMessage, setImportMessage] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [previewData, setPreviewData] = useState<BackupData | null>(null);
+
+  // タブ
+  const [activeTab, setActiveTab] = useState<'ai' | 'data'>('ai');
 
   // モデル一覧を取得
   const fetchModels = useCallback(async (endpoint: string) => {
@@ -171,7 +182,34 @@ export default function SettingsPage() {
       </header>
 
       {/* メインコンテンツ */}
-      <main className="max-w-2xl mx-auto px-4 py-8">
+      <main className="max-w-2xl mx-auto px-4 py-6">
+        {/* タブ */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+          <button
+            onClick={() => setActiveTab('ai')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'ai'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            AIサポート
+          </button>
+          <button
+            onClick={() => setActiveTab('data')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'data'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            データ管理
+          </button>
+        </div>
+
+        {/* AIサポート設定タブ */}
+        {activeTab === 'ai' && (
+          <>
         {/* AI設定セクション */}
         <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -412,6 +450,183 @@ export default function SettingsPage() {
             <p className="pt-2">設定後、「接続テスト」で確認してください。</p>
           </div>
         </section>
+          </>
+        )}
+
+        {/* データ管理タブ */}
+        {activeTab === 'data' && (
+        <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              データ管理
+            </h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              学習データのバックアップと復元
+            </p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* エクスポート */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                エクスポート
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                マークした単語、ユーザー教材、設定をJSON形式でダウンロードします。
+              </p>
+              <button
+                onClick={exportBackup}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                バックアップをダウンロード
+              </button>
+            </div>
+
+            {/* インポート */}
+            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                インポート
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                バックアップファイルから復元します。ファイルを選択するかドラッグ&ドロップしてください。
+              </p>
+
+              {/* ドラッグ&ドロップエリア */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  const file = e.dataTransfer.files[0];
+                  if (file && file.name.endsWith('.json')) {
+                    try {
+                      const data = await readBackupFile(file);
+                      setPreviewData(data);
+                      setImportStatus('idle');
+                      setImportMessage('');
+                    } catch (err) {
+                      setImportStatus('error');
+                      setImportMessage(err instanceof Error ? err.message : 'エラー');
+                    }
+                  }
+                }}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                  isDragging
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-300 dark:border-gray-600'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      try {
+                        const data = await readBackupFile(file);
+                        setPreviewData(data);
+                        setImportStatus('idle');
+                        setImportMessage('');
+                      } catch (err) {
+                        setImportStatus('error');
+                        setImportMessage(err instanceof Error ? err.message : 'エラー');
+                      }
+                    }
+                  }}
+                />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mx-auto mb-2 text-gray-400"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  ここにファイルをドラッグ&ドロップ
+                </p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  またはファイルを選択
+                </button>
+              </div>
+
+              {/* プレビュー */}
+              {previewData && (
+                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">
+                    バックアップの内容
+                  </h4>
+                  <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+                    <li>エクスポート日時: {new Date(previewData.exportedAt).toLocaleString('ja-JP')}</li>
+                    <li>マークした単語: {Object.values(previewData.markedWords).reduce((acc, arr) => acc + arr.length, 0)}個</li>
+                    <li>ユーザー教材: {previewData.userMaterials.length}個</li>
+                  </ul>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => {
+                        const result = importBackup(previewData);
+                        setImportStatus(result.success ? 'success' : 'error');
+                        setImportMessage(result.message);
+                        if (result.success) {
+                          setPreviewData(null);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
+                    >
+                      インポートを実行
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPreviewData(null);
+                        setImportStatus('idle');
+                        setImportMessage('');
+                      }}
+                      className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* インポート結果 */}
+              {importMessage && (
+                <div
+                  className={`mt-4 p-3 rounded-lg text-sm ${
+                    importStatus === 'success'
+                      ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                      : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                  }`}
+                >
+                  {importMessage}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+        )}
       </main>
     </div>
   );

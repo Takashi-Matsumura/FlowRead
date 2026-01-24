@@ -21,10 +21,11 @@ FlowRead is an English learning application that helps users understand English 
 flow-read/
 ├── app/
 │   ├── layout.tsx              # Root layout
-│   ├── page.tsx                # Home (material list)
+│   ├── page.tsx                # Home (tabbed: materials/review)
 │   ├── globals.css
 │   ├── learn/[materialId]/     # Learning page
-│   └── settings/               # AI settings page
+│   ├── review/                 # Flashcard review page
+│   └── settings/               # Settings (tabbed: AI/data)
 ├── components/
 │   ├── learning/
 │   │   ├── FlowDisplay.tsx     # Main text display with chunk highlighting
@@ -46,7 +47,8 @@ flow-read/
 │   ├── storage/
 │   │   ├── settings.ts         # localStorage for settings
 │   │   ├── marked-words.ts     # localStorage for marked words
-│   │   └── materials.ts        # localStorage for user materials
+│   │   ├── materials.ts        # localStorage for user materials
+│   │   └── backup.ts           # Export/import backup (JSON)
 │   └── utils/
 │       ├── chunk-colors.ts     # Color utilities for chunk roles
 │       └── parse-text.ts       # Text parsing for material creation
@@ -107,6 +109,14 @@ interface Material {
    - Auto-splits text into sentences
    - Saved to localStorage
    - Deletable from home page
+8. **Flashcard Review**: Review marked words with flashcards (`/review`)
+   - Shuffle words randomly
+   - Filter by type (new/forgotten)
+   - Show context on demand
+9. **Backup & Restore**: Export/import learning data (JSON)
+   - Export: Download all data from Settings
+   - Import: Drag & drop on home page or Settings
+   - Includes: marked words, user materials, settings
 
 ## Design Principles
 
