@@ -47,13 +47,11 @@ export default function Home() {
   // クライアントサイドでのみlocalStorageからデータを取得（hydration後）
   const [userMaterials, setUserMaterials] = useState<Material[]>([]);
   const [markedWordsCount, setMarkedWordsCount] = useState(0);
-  const [isHydrated, setIsHydrated] = useState(false);
 
   // クライアントサイドでデータを読み込む
   useEffect(() => {
     setUserMaterials(getUserMaterials());
     setMarkedWordsCount(getMarkedWordsCount());
-    setIsHydrated(true);
   }, []);
 
   const refreshData = () => {

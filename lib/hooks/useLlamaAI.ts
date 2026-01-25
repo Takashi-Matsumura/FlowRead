@@ -3,10 +3,6 @@
 import { useState, useCallback } from 'react';
 import { AISettings } from '../types/settings';
 
-interface LlamaResponse {
-  content: string;
-}
-
 interface UseLlamaAIReturn {
   isLoading: boolean;
   error: string | null;

@@ -39,3 +39,22 @@ export function clearMarkedWords(materialId: string): void {
     console.error('Failed to clear marked words:', e);
   }
 }
+
+// 単語のステータスを更新
+export function updateMarkedWordType(
+  materialId: string,
+  word: string,
+  newType: MarkedWord['type']
+): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const words = getMarkedWords(materialId);
+    const updatedWords = words.map((w) =>
+      w.word === word ? { ...w, type: newType } : w
+    );
+    saveMarkedWords(materialId, updatedWords);
+  } catch (e) {
+    console.error('Failed to update marked word:', e);
+  }
+}

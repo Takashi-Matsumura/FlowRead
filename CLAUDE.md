@@ -98,9 +98,10 @@ interface Material {
 1. **Flow Display**: Shows full text with chunk-by-chunk highlighting
 2. **Keyboard Navigation**: Arrow keys to move through chunks
 3. **Chunk Tooltip**: Shows role, question form, and flow hint
-4. **Word Marking**: Right-click to mark words with two types:
+4. **Word Marking**: Right-click to mark words with three statuses:
    - **知らなかった (new)**: First time seeing this word (blue highlight)
    - **忘れてしまった (forgotten)**: Seen before but forgot (amber highlight)
+   - **覚えた (mastered)**: Learned through review (green highlight)
    - Keyboard shortcuts: `1` for new, `2` for forgotten
    - Persisted to localStorage per material
 5. **AI Support**: Local LLM integration for explanations (llama.cpp, LM Studio, Ollama)
@@ -111,8 +112,10 @@ interface Material {
    - Deletable from home page
 8. **Flashcard Review**: Review marked words with flashcards (`/review`)
    - Shuffle words randomly
-   - Filter by type (new/forgotten)
+   - Filter by type (new/forgotten/mastered)
    - Show context on demand
+   - AI lookup for word explanations
+   - Mark as "覚えた" when mastered (doesn't delete, changes status)
 9. **Backup & Restore**: Export/import learning data (JSON)
    - Export: Download all data from Settings
    - Import: Drag & drop on home page or Settings

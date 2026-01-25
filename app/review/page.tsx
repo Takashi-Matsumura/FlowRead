@@ -2,10 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { MarkedWord } from '@/lib/types';
+import { MarkedWord, MarkType } from '@/lib/types';
 import { FlowReadIcon } from '@/components/ui/FlowReadIcon';
 import { builtInMaterials } from '@/data/sample-materials/north-wind-and-sun';
 import { getUserMaterials } from '@/lib/storage/materials';
+import { updateMarkedWordType } from '@/lib/storage/marked-words';
+import { useSettings } from '@/lib/hooks/useSettings';
+import { useLlamaAI } from '@/lib/hooks/useLlamaAI';
 
 interface WordWithContext extends MarkedWord {
   materialId: string;
@@ -33,7 +36,6 @@ function getAllMarkedWordsWithContext(): WordWithContext[] {
         if (data) {
           const words: MarkedWord[] = JSON.parse(data);
           words.forEach(word => {
-            // コンテキストを取得
             const sentence = material.sentences[word.sentenceIndex];
             const context = sentence?.originalText || '';
 
@@ -54,7 +56,6 @@ function getAllMarkedWordsWithContext(): WordWithContext[] {
   return result;
 }
 
-// シャッフル関数
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -64,12 +65,35 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
+type ReviewMode = 'all' | 'new' | 'forgotten' | 'mastered';
+
 export default function ReviewPage() {
+  const { settings, isLoaded: settingsLoaded } = useSettings();
+  const { askAI, isLoading: aiLoading } = useLlamaAI(settings.ai);
+
   const [words, setWords] = useState<WordWithContext[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showContext, setShowContext] = useState(false);
-  const [reviewMode, setReviewMode] = useState<'all' | 'new' | 'forgotten'>('all');
+  const [reviewMode, setReviewMode] = useState<ReviewMode>('all');
   const [isComplete, setIsComplete] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // AI関連
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [showAI, setShowAI] = useState(false);
+
+  // 単語数のカウント
+  const [counts, setCounts] = useState({ all: 0, new: 0, forgotten: 0, mastered: 0 });
+
+  const updateCounts = useCallback(() => {
+    const allWords = getAllMarkedWordsWithContext();
+    setCounts({
+      all: allWords.length,
+      new: allWords.filter(w => w.type === 'new').length,
+      forgotten: allWords.filter(w => w.type === 'forgotten').length,
+      mastered: allWords.filter(w => w.type === 'mastered').length,
+    });
+  }, []);
 
   const loadWords = useCallback(() => {
     const allWords = getAllMarkedWordsWithContext();
@@ -79,15 +103,21 @@ export default function ReviewPage() {
       filtered = allWords.filter(w => w.type === 'new');
     } else if (reviewMode === 'forgotten') {
       filtered = allWords.filter(w => w.type === 'forgotten');
+    } else if (reviewMode === 'mastered') {
+      filtered = allWords.filter(w => w.type === 'mastered');
     }
 
     setWords(shuffleArray(filtered));
     setCurrentIndex(0);
     setShowContext(false);
+    setShowAI(false);
+    setAiResponse(null);
     setIsComplete(false);
-  }, [reviewMode]);
+    updateCounts();
+  }, [reviewMode, updateCounts]);
 
   useEffect(() => {
+    setIsHydrated(true);
     loadWords();
   }, [loadWords]);
 
@@ -97,6 +127,8 @@ export default function ReviewPage() {
     if (currentIndex < words.length - 1) {
       setCurrentIndex(prev => prev + 1);
       setShowContext(false);
+      setShowAI(false);
+      setAiResponse(null);
     } else {
       setIsComplete(true);
     }
@@ -106,12 +138,73 @@ export default function ReviewPage() {
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
       setShowContext(false);
+      setShowAI(false);
+      setAiResponse(null);
     }
   };
 
   const handleRestart = () => {
     loadWords();
   };
+
+  const handleMarkAs = (newType: MarkType) => {
+    if (!currentWord) return;
+
+    updateMarkedWordType(currentWord.materialId, currentWord.word, newType);
+
+    // ローカルのwordsも更新
+    setWords(prev =>
+      prev.map((w, i) =>
+        i === currentIndex ? { ...w, type: newType } : w
+      )
+    );
+    updateCounts();
+  };
+
+  const handleAskAI = async () => {
+    if (!currentWord || !settings.ai.enabled) return;
+
+    setShowAI(true);
+    setAiResponse(null);
+
+    try {
+      const prompt = `「${currentWord.word}」という単語について、以下の文脈での意味やニュアンスを教えてください。
+
+文脈: "${currentWord.context}"
+
+この単語がこの文脈でどのような意味の流れを作っているか、英語の語順のまま理解できるように説明してください。`;
+
+      const response = await askAI(prompt);
+      setAiResponse(response);
+    } catch (error) {
+      setAiResponse('AIからの回答を取得できませんでした。');
+      console.error('AI error:', error);
+    }
+  };
+
+  const getTypeLabel = (type: MarkType) => {
+    switch (type) {
+      case 'new': return '知らなかった';
+      case 'forgotten': return '忘れた';
+      case 'mastered': return '覚えた';
+    }
+  };
+
+  const getTypeColor = (type: MarkType) => {
+    switch (type) {
+      case 'new': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+      case 'forgotten': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+      case 'mastered': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
+    }
+  };
+
+  if (!isHydrated || !settingsLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">読み込み中...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -145,7 +238,7 @@ export default function ReviewPage() {
 
       <main className="max-w-2xl mx-auto px-4 py-8">
         {/* フィルター */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6">
           <button
             onClick={() => setReviewMode('all')}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
@@ -154,7 +247,7 @@ export default function ReviewPage() {
                 : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
-            すべて ({getAllMarkedWordsWithContext().length})
+            すべて ({counts.all})
           </button>
           <button
             onClick={() => setReviewMode('new')}
@@ -164,7 +257,7 @@ export default function ReviewPage() {
                 : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
-            知らなかった
+            知らなかった ({counts.new})
           </button>
           <button
             onClick={() => setReviewMode('forgotten')}
@@ -174,7 +267,17 @@ export default function ReviewPage() {
                 : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
-            忘れた
+            忘れた ({counts.forgotten})
+          </button>
+          <button
+            onClick={() => setReviewMode('mastered')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              reviewMode === 'mastered'
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            覚えた ({counts.mastered})
           </button>
         </div>
 
@@ -195,10 +298,14 @@ export default function ReviewPage() {
               <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
             </svg>
             <p className="text-gray-500 dark:text-gray-400 mb-4">
-              復習する単語がありません
+              {reviewMode === 'mastered'
+                ? 'まだ覚えた単語がありません'
+                : '復習する単語がありません'}
             </p>
             <p className="text-sm text-gray-400 dark:text-gray-500">
-              教材を学習して、単語をマークしてください
+              {reviewMode === 'mastered'
+                ? '復習で「覚えた」をマークすると、ここに表示されます'
+                : '教材を学習して、単語をマークしてください'}
             </p>
           </div>
         ) : isComplete ? (
@@ -238,14 +345,8 @@ export default function ReviewPage() {
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               {/* 単語 */}
               <div className="p-8 text-center">
-                <span
-                  className={`inline-block px-2 py-0.5 text-xs rounded mb-4 ${
-                    currentWord.type === 'new'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                  }`}
-                >
-                  {currentWord.type === 'new' ? '知らなかった' : '忘れた'}
+                <span className={`inline-block px-2 py-0.5 text-xs rounded mb-4 ${getTypeColor(currentWord.type)}`}>
+                  {getTypeLabel(currentWord.type)}
                 </span>
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
                   {currentWord.word}
@@ -253,6 +354,34 @@ export default function ReviewPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {currentWord.materialTitle}
                 </p>
+              </div>
+
+              {/* ステータス変更ボタン */}
+              <div className="px-6 pb-4 flex justify-center gap-2">
+                {currentWord.type !== 'mastered' && (
+                  <button
+                    onClick={() => handleMarkAs('mastered')}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                  >
+                    覚えた
+                  </button>
+                )}
+                {currentWord.type === 'mastered' && (
+                  <>
+                    <button
+                      onClick={() => handleMarkAs('new')}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                    >
+                      知らなかった
+                    </button>
+                    <button
+                      onClick={() => handleMarkAs('forgotten')}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
+                    >
+                      忘れた
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* コンテキスト表示 */}
@@ -283,6 +412,55 @@ export default function ReviewPage() {
                   </button>
                 )}
               </div>
+
+              {/* AIサポート */}
+              {settings.ai.enabled && (
+                <div className="border-t border-gray-200 dark:border-gray-700">
+                  {showAI ? (
+                    <div className="p-6 bg-blue-50 dark:bg-blue-900/20">
+                      <p className="text-sm text-blue-600 dark:text-blue-400 mb-2 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 8V4H8"/>
+                          <rect width="16" height="12" x="4" y="8" rx="2"/>
+                          <path d="M2 14h2"/>
+                          <path d="M20 14h2"/>
+                          <path d="M15 13v2"/>
+                          <path d="M9 13v2"/>
+                        </svg>
+                        AIサポート
+                      </p>
+                      {aiLoading ? (
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          AIが考えています...
+                        </div>
+                      ) : aiResponse ? (
+                        <div className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                          {aiResponse}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleAskAI}
+                      className="w-full p-4 text-center text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 8V4H8"/>
+                        <rect width="16" height="12" x="4" y="8" rx="2"/>
+                        <path d="M2 14h2"/>
+                        <path d="M20 14h2"/>
+                        <path d="M15 13v2"/>
+                        <path d="M9 13v2"/>
+                      </svg>
+                      AIで調べる
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* ナビゲーション */}

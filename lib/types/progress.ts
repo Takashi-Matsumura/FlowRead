@@ -14,7 +14,8 @@ export interface UserProgress {
 // マークの種類
 // new: 知らなかった（初めて見た単語）
 // forgotten: 忘れてしまった（見たことがあるが思い出せない）
-export type MarkType = 'new' | 'forgotten';
+// mastered: 覚えた（復習で克服した）
+export type MarkType = 'new' | 'forgotten' | 'mastered';
 
 // マークした単語
 export interface MarkedWord {
